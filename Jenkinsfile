@@ -60,5 +60,19 @@ pipeline {
                 }
             }
         }
+        stage('docker-image-build') {
+            steps {
+                sh "docker build -t ${IMAGE_NAM}:${TAG} ."
+            }
+        }
+        stage('docker-image-build') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker-cred') {
+                      sh "docker push ${IMAGE_NAM}:${TAG}"
+                    }
+                }
+            }
+        }
     }
 }
