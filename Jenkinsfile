@@ -17,32 +17,45 @@ pipeline {
     }
 
     stages {
-        stage('Git Checkout') {
+        stage('compile') {
             steps {
-                git branch: 'main', credentialsId: 'git-cred', url: 'https://github.com/jaiswaladi246/3-Tier-NodeJS-MySql-Docker.git'
+                sh "mvn compile"
             }
         }
-        
-        stage('SonarQube Analysis') {
+        stage('Test') {
             steps {
-                withSonarQubeEnv('sonar') {
-                    sh "$SCANNER_HOME/bin/sonar-scanner -Dsonar.projectKey=nodejsmysql -Dsonar.projectName=nodejsmysql"
-                }
+                sh "mvn test -Dmaven.test.skip=true"
             }
         }
-        
         stage('Trivy FS Scan') {
             steps {
                 sh "trivy fs --format table -o fs.html ."
             }
         }
-        
-        stage('Docker build') {
+        stage('SonarQube Analysis') {
             steps {
-                script {
-                    withDockerRegistry(credentialsId: 'docker-cred') {
-                        sh "docker build -t ${IMAGE_NAME}:${TAG} ."
-                    }
+                withSonarQubeEnv('sonar') {
+                    sh "$SCANNER_HOME/bin/sonar-scanner -Dsonar.projectKey=multitier -Dsonar.projectName=multitier -Dsonar.java.binaries=target"
+                }
+            }
+        }
+        
+        stage('Quality-Gate-Check') {
+            steps {
+                timeout(time: 1, unit: 'HOURS') {
+                    waitForQualityGate abortPipeline: false
+                }
+            }
+        }
+        stage('build') {
+            steps {
+                sh "mvn package -Dmaven.test.skip=true"
+            }
+        }
+        stage('publish to nexus') {
+            steps {
+                withMaven(globalMavenSettingsConfig: 'maven-settings', jdk: '', maven: 'maven3', mavenSettingsConfig: '', traceability: true) {
+                   sh "mvn deploy -Dmaven.test.skip=true"
                 }
             }
         }
