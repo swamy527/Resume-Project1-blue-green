@@ -74,5 +74,58 @@ pipeline {
                 }
             }
         }
+        stage('Deploy MySQL Deployment and Service') {
+            steps {
+                script {
+                    withKubeConfig(caCertificate: '', clusterName: 'roboshop', contextName: '', credentialsId: 'kube-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://8F846A0C0EFD6AF532D16636CADFCBE4.gr7.us-east-1.eks.amazonaws.com') {
+                        sh "kubectl apply -f mysql-ds.yml -n ${KUBE_NAMESPACE}"  // Ensure you have the MySQL deployment YAML ready
+                    }
+                }
+            }
+        }
+        stage('Deploy SVC-APP') {
+            steps {
+                script {
+                    withKubeConfig(caCertificate: '', clusterName: 'roboshop', contextName: '', credentialsId: 'kube-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://8F846A0C0EFD6AF532D16636CADFCBE4.gr7.us-east-1.eks.amazonaws.com') {
+                         sh """ if ! kubectl get svc bankapp-service -n ${KUBE_NAMESPACE}; then
+                                kubectl apply -f bankapp-service.yml -n ${KUBE_NAMESPACE}
+                              fi
+                        """
+                    }
+                }
+            }
+        }
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    def deploymentFile = ""
+                    if (params.DEPLOY_ENV == 'blue') {
+                        deploymentFile = 'app-deployment-blue.yml'
+                    } else {
+                        deploymentFile = 'app-deployment-green.yml'
+                    }
+                    withKubeConfig(caCertificate: '', clusterName: 'roboshop', contextName: '', credentialsId: 'kube-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://8F846A0C0EFD6AF532D16636CADFCBE4.gr7.us-east-1.eks.amazonaws.com') {
+                        sh "kubectl apply -f ${deploymentFile} -n ${KUBE_NAMESPACE}"
+                    }
+                }
+            }
+        }
+        stage('Switch Traffic Between Blue & Green Environment') {
+            when {
+                expression { return params.SWITCH_TRAFFIC }
+            }
+            steps {
+                script {
+                    def newEnv = params.DEPLOY_ENV
+                    // Always switch traffic based on DEPLOY_ENV
+                    withKubeConfig(caCertificate: '', clusterName: 'roboshop', contextName: '', credentialsId: 'kube-token', namespace: 'webapps', restrictKubeConfigAccess: false, serverUrl: 'https://8F846A0C0EFD6AF532D16636CADFCBE4.gr7.us-east-1.eks.amazonaws.com') {
+                        sh '''
+                            kubectl patch service bankapp-service -p "{\\"spec\\": {\\"selector\\": {\\"app\\": \\"bankapp\\", \\"version\\": \\"''' + newEnv + '''\\"}}}" -n ${KUBE_NAMESPACE}
+                        '''
+                    }
+                    echo "Traffic has been switched to the ${newEnv} environment."
+                }
+            }
+        }
     }
 }
