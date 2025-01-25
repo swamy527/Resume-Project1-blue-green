@@ -65,7 +65,7 @@ pipeline {
                 sh "docker build -t ${IMAGE_NAME}:${TAG} ."
             }
         }
-        stage('docker-image-build') {
+        stage('publish-artifact') {
             steps {
                 script {
                     withDockerRegistry(credentialsId: 'docker-cred') {
